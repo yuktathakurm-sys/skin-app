@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>AI Skin App</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg,#ffd6e0,#c8e6ff);
+    text-align: center;
+}
+
+.card {
+    padding: 25px;
+    margin: 40px auto;
+    width: 350px;
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+.hidden { display:none; }
+
+button {
+    padding:12px;
+    margin:10px;
+    border-radius:10px;
+    background:#ff6b81;
+    color:white;
+    border:none;
+}
+
+.badge {
+    padding:8px 12px;
+    margin:5px;
+    border-radius:10px;
+    color:white;
+    font-weight:bold;
+    display:inline-block;
+}
+#result {
+    background:#f9f9f9;
+    padding:10px;
+    border-radius:10px;
+    margin-top:10px;
+}
+
+.camera-box {
+    position: relative;
+    width: 320px;
+    height: 320px;
+    margin: auto;
+    border-radius: 25px;
+    overflow: hidden;
+}
+
+.camera-box video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* DARK BACKGROUND */
+.overlay {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.55);
+
+    /* CUT OUT CIRCLE */
+   -webkit-mask: radial-gradient(circle at center, transparent 32%, black 33%);
+    mask: radial-gradient(circle at center, transparent 32%, black 33%);
+}
+
+/* GLOW RING */
+.face-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+
+    border: 3px solid #ff4d6d;
+
+    box-shadow:
+        0 0 10px #ff4d6d,
+        0 0 25px #ff4d6d,
+        inset 0 0 10px #ff4d6d;
+}
+
+/* TEXT */
+.guide-text {
+    color: #777;
+    font-size: 13px;
+    margin-top: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>✨ AI Skin Health Detector</h1>
+
+<!-- LOGIN -->
+<div id="login" class="card">
+<input id="username" placeholder="Username"><br><br>
+<input id="password" type="password" placeholder="Password"><br><br>
+<button onclick="login()">Login</button>
+</div>
+
+<!-- MENU -->
+<div id="menu" class="card hidden">
+<h2>Main Menu</h2>
+<button onclick="show('scan')">📷 Scan</button>
+<button onclick="show('history')">📊 History</button>
+<button onclick="show('tips')">💡 Tips</button>
+<button onclick="show('routine')">⏰ Routine</button>
+</div>
+
+<!-- SCAN -->
+<div id="scan" class="card hidden">
+<h2>Scan Face</h2>
+<div class="camera-box">
+    <video id="video" autoplay></video>
+
+    <!-- DARK OVERLAY -->
+    <div class="overlay"></div>
+
+    <!-- GLOW FACE RING -->
+    <div class="face-ring"></div>
+</div>
+
+<p class="guide-text">Align your face inside the circle</p>
+<button onclick="capture()">Scan</button>
+<div id="result"></div>
+<button onclick="back()">⬅ Back</button>
+</div>
+
+<!-- HISTORY -->
+<div id="history" class="card hidden">
+<h2>📈 Progress</h2>
+<canvas id="chart"></canvas>
+<div id="historyData"></div>
+<button onclick="back()">⬅ Back</button>
+</div>
+
+<!-- TIPS -->
+<div id="tips" class="card hidden">
+<h2>Tips</h2>
+<p>✔ Drink water</p>
+<p>✔ Sleep well</p>
+<p>✔ Clean face daily</p>
+<button onclick="back()">⬅ Back</button>
+</div>
+
+<!-- ROUTINE -->
+<div id="routine" class="card hidden">
+<h2>🧠 Your Routine</h2>
+
+<h4>🌞 Morning</h4>
+<div id="morningList"></div>
+<input id="morningInput" placeholder="Add morning step">
+<button onclick="addStep('morning')">➕ Add</button>
+
+<h4>🌙 Night</h4>
+<div id="nightList"></div>
+<input id="nightInput" placeholder="Add night step">
+<button onclick="addStep('night')">➕ Add</button>
+
+<br><br>
+<button onclick="back()">⬅ Back</button>
+</div>
+
+<script>
+let user="";
+
+// LOGIN (same)
+function login() {
+    let username = document.getElementById('username').value;
+    let password = document.getElementById('password').value;
+
+    if(!username || !password){
+        alert("Please enter username & password");
+        return;
+    }
+
+    fetch('http://127.0.0.1:5000/login', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({username, password})
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        alert(data.message);
+
+        if(data.status === "success" || data.status === "created"){
+            user = username;
+            show('menu');
+        }
+    })
+    .catch(()=>{
+        alert("Backend not connected!");
+    });
+}
+
+// SHOW
+function show(section){
+    ["login","menu","scan","history","tips","routine"].forEach(id=>{
+        document.getElementById(id).classList.add("hidden");
+    });
+    document.getElementById(section).classList.remove("hidden");
+
+    if(section==="history") loadHistory();
+}
+
+function back(){ show('menu'); }
+
+// CAMERA
+navigator.mediaDevices.getUserMedia({video:true})
+.then(stream=>{
+    document.getElementById('video').srcObject=stream;
+});
+
+// SCAN (UPGRADED)
+function capture(){
+
+    console.log("📸 Scan button clicked");
+
+    let loader = document.getElementById("loader");
+
+    // ✅ show loader
+    if(loader) loader.classList.remove("hidden");
+
+    let video = document.getElementById("video");
+
+    // ✅ camera check
+    if(video.videoWidth === 0){
+        alert("Camera not ready!");
+        if(loader) loader.classList.add("hidden");
+        return;
+    }
+
+    let canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    canvas.getContext("2d").drawImage(video, 0, 0);
+
+    let image = canvas.toDataURL("image/jpeg");
+
+    fetch("http://127.0.0.1:5000/scan", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            image: image,
+            username: user
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+
+        // ✅ hide loader AFTER response
+        if(loader) loader.classList.add("hidden");
+
+        if(!data || !data.conditions){
+            document.getElementById("result").innerHTML = "❌ No data received";
+            return;
+        }
+
+        let score = data.score;
+
+        let message = "";
+        if(score > 80) message = "✨ Glowing Skin!";
+        else if(score > 60) message = "👍 Keep improving!";
+        else message = "⚠️ Needs attention";
+
+        let output = `<h3>${message}</h3>`;
+        output += `<h3>Score: ${score}/100</h3>`;
+
+        output += `
+        <div style="background:#eee;border-radius:20px;margin:15px;">
+            <div style="
+                height:18px;
+                width:${score}%;
+                background:linear-gradient(to right,#00c853,#64dd17);
+                border-radius:20px;
+                transition:0.5s;
+            "></div>
+        </div>
+        `;
+
+        output += "<b>Detected Conditions:</b><br>";
+
+        data.conditions.forEach(c=>{
+            let color = "#777";
+
+            if(c==="Acne") color="#ff4d4d";
+            if(c==="Oily Skin") color="#ffa500";
+            if(c==="Dry Skin") color="#3498db";
+            if(c==="Normal Skin") color="#2ecc71";
+            if(c==="Dermatitis") color="#9b59b6";
+            if(c==="Eczema") color="#8e44ad";
+            if(c==="Sunburn") color="#e67e22";
+
+            output += `
+            <span class="badge" style="
+                background:${color};
+                padding:8px 12px;
+                border-radius:12px;
+                margin:5px;
+                color:white;
+                font-weight:bold;
+            ">
+                ${c}
+            </span>
+            `;
+        });
+
+        output += "<br><br><b>🧴 Recommended Skincare:</b><br>";
+
+        data.suggestions.forEach(s=>{
+            output += `
+            <div style="
+                background:white;
+                padding:12px;
+                border-radius:15px;
+                margin:10px;
+                box-shadow:0 6px 15px rgba(0,0,0,0.1);
+                font-weight:500;
+            ">
+                ✨ ${s}
+            </div>
+            `;
+        });
+
+        if(score < 50){
+            output += `
+            <p style="color:red;font-weight:bold;">
+                ⚠️ Consider consulting a dermatologist
+            </p>
+            `;
+        }
+
+        document.getElementById("result").innerHTML = output;
+    })
+    .catch(err=>{
+        if(loader) loader.classList.add("hidden");
+        document.getElementById("result").innerHTML = "❌ Error connecting backend";
+        console.error(err);
+    });
+}
+// 📈 GRAPH
+let chart;
+
+function loadHistory(){
+    fetch(`http://127.0.0.1:5000/history/${user}`)
+    .then(res=>res.json())
+    .then(data=>{
+
+        let labels=[], values=[], html="";
+
+        data.forEach((d,i)=>{
+            html += `<p>${d.date} - ${d.condition}</p>`;
+            labels.push("Scan "+(i+1));
+            values.push(d.score || 50);
+        });
+
+        document.getElementById('historyData').innerHTML=html;
+
+        // 🔥 destroy old chart
+        if(chart) chart.destroy();
+
+        chart = new Chart(document.getElementById('chart'), {
+            type:'line',
+            data:{
+                labels:labels,
+                datasets:[{
+                    label:'Skin Score',
+                    data:values,
+                    borderWidth:2
+                }]
+            }
+        });
+    });
+
+    // LOAD ROUTINE
+function loadRoutine(){
+    let morning = JSON.parse(localStorage.getItem("morning")) || [];
+    let night = JSON.parse(localStorage.getItem("night")) || [];
+
+    renderList("morning", morning);
+    renderList("night", night);
+}
+
+// ADD STEP
+function addStep(type){
+    let input = document.getElementById(type + "Input");
+    let value = input.value.trim();
+
+    if(!value) return;
+
+    let data = JSON.parse(localStorage.getItem(type)) || [];
+    data.push(value);
+
+    localStorage.setItem(type, JSON.stringify(data));
+
+    input.value = "";
+    renderList(type, data);
+}
+
+// DELETE STEP
+function deleteStep(type, index){
+    let data = JSON.parse(localStorage.getItem(type)) || [];
+    data.splice(index, 1);
+
+    localStorage.setItem(type, JSON.stringify(data));
+    renderList(type, data);
+}
+
+// RENDER
+function renderList(type, data){
+    let container = document.getElementById(type + "List");
+    container.innerHTML = "";
+
+    data.forEach((item, i)=>{
+        container.innerHTML += `
+        <div style="
+            background:#f1f1f1;
+            padding:10px;
+            margin:5px;
+            border-radius:10px;
+        ">
+            ${item}
+            <button onclick="deleteStep('${type}', ${i})"
+            style="float:right;background:red;">❌</button>
+        </div>
+        `;
+    });
+}
+}
+</script>
+
+</body>
+</html>
