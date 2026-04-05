@@ -212,7 +212,7 @@ def get_history(username):
 def home():
     return render_template("index.html")
 
-import os 
+import os  
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
