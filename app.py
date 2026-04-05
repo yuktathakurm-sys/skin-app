@@ -205,6 +205,10 @@ def check_face():
 def get_history(username):
     return jsonify(history.get(username, []))
 
+@app.route('/')
+def home():
+    return "Skin AI Backend is running 🚀"
+
 
 # ---------------- RUN ----------------
 import os
